@@ -1,0 +1,36 @@
+# Test that we get the expected process "call" stack when run in debug mode.
+# We only test for part of the "call" stack - the two temp directory instances
+# we install as part of the test setup
+
+env COMPOSE_RESOLVE_DEBUG=true
+
+env PATH
+
+# Same directory
+docker-compose -f docker-compose-1.yml config
+cmp stdout out.golden
+stderr '\Acall: '$TD1'/docker-compose -f '$WORK'/docker-compose-1.yml config\ncall: '$TD2'/docker-compose -f '$WORK'/docker-compose-1.yml config\n'
+
+# Different directory
+docker-compose -f another/dir/docker-compose-2.yml config
+cmp stdout out.golden
+stderr '\Aresolve: '$TD1'/docker-compose -f .*docker-compose-2.yml config\ncall: '$TD1'/docker-compose -f '$WORK'/tmp/.* config\ncall: '$TD2'/docker-compose -f '$WORK'/tmp/.* config\n'
+
+-- docker-compose-1.yml --
+services:
+  service1:
+    image: busybox:1.31.1-musl
+version: '3.2'
+
+-- another/dir/docker-compose-2.yml --
+services:
+  service1:
+    image: busybox:1.31.1-musl
+version: '3.2'
+
+-- out.golden --
+services:
+  service1:
+    image: busybox:1.31.1-musl
+version: '3.2'
+

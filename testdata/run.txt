@@ -1,0 +1,52 @@
+# Test that basic combinations of COMPOSE_FILE and -f work
+
+# No files specified - should default to docker-compose.yml
+docker-compose config
+cmp stdout single.golden
+
+# One file via COMPOSE_FILE, another via -f
+env COMPOSE_FILE=docker-compose-1.yml
+docker-compose -f another/dir/docker-compose-2.yml config
+cmp stdout combined.golden
+
+# Both via COMPOSE_FILE
+env COMPOSE_FILE=docker-compose-1.yml:another/dir/docker-compose-2.yml
+docker-compose config
+cmp stdout combined.golden
+
+# Both via -f
+env COMPOSE_FILE=
+docker-compose -f docker-compose-1.yml -f another/dir/docker-compose-2.yml config
+cmp stdout combined.golden
+
+-- docker-compose.yml --
+services:
+  service0:
+    image: busybox:1.31.1-musl
+version: '3.2'
+
+-- docker-compose-1.yml --
+services:
+  service1:
+    image: busybox:1.31.1-musl
+version: '3.2'
+
+-- another/dir/docker-compose-2.yml --
+services:
+  service2:
+    image: busybox:1.31.1-musl
+version: '3.2'
+-- single.golden --
+services:
+  service0:
+    image: busybox:1.31.1-musl
+version: '3.2'
+
+-- combined.golden --
+services:
+  service1:
+    image: busybox:1.31.1-musl
+  service2:
+    image: busybox:1.31.1-musl
+version: '3.2'
+
