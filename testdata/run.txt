@@ -2,51 +2,69 @@
 
 # No files specified - should default to docker-compose.yml
 docker-compose config
-cmp stdout single.golden
+cmpenv stdout single.golden
 
 # One file via COMPOSE_FILE, another via -f
 env COMPOSE_FILE=docker-compose-1.yml
 docker-compose -f another/dir/docker-compose-2.yml config
-cmp stdout combined.golden
+cmpenv stdout combined.golden
 
 # Both via COMPOSE_FILE
 env COMPOSE_FILE=docker-compose-1.yml:another/dir/docker-compose-2.yml
 docker-compose config
-cmp stdout combined.golden
+cmpenv stdout combined.golden
 
 # Both via -f
 env COMPOSE_FILE=
 docker-compose -f docker-compose-1.yml -f another/dir/docker-compose-2.yml config
-cmp stdout combined.golden
+cmpenv stdout combined.golden
+
+# Specifying files in the "wrong" order still works for the resolution
+# in docker-compose-1.yml
+env COMPOSE_FILE=
+docker-compose -f another/dir/docker-compose-2.yml -f docker-compose-1.yml config
+cmpenv stdout combined.golden
 
 -- docker-compose.yml --
 services:
   service0:
+    volumes:
+      - .:/blah
     image: busybox:1.31.1-musl
 version: '3.2'
 
 -- docker-compose-1.yml --
 services:
   service1:
+    volumes:
+      - .:/blah
     image: busybox:1.31.1-musl
 version: '3.2'
 
 -- another/dir/docker-compose-2.yml --
 services:
   service2:
+    volumes:
+      - $PWD:/blah
     image: busybox:1.31.1-musl
 version: '3.2'
 -- single.golden --
 services:
   service0:
     image: busybox:1.31.1-musl
+    volumes:
+    - $WORK:/blah:rw
 version: '3.2'
 
 -- combined.golden --
 services:
   service1:
     image: busybox:1.31.1-musl
+    volumes:
+    - $WORK:/blah:rw
   service2:
     image: busybox:1.31.1-musl
+    volumes:
+    - $WORK/another/dir:/blah:rw
 version: '3.2'
 
