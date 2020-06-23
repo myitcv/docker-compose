@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/myitcv/docker-compose/internal/os/execpath"
@@ -251,6 +252,7 @@ func resolveComposeFiles(dc string, files []string) (string, []string, error) {
 		cmd := exec.Command(dc, args...)
 		debugf("resolve: %v\n", strings.Join(cmd.Args, " "))
 		var stderr bytes.Buffer
+		cmd.Env = append(os.Environ(), "PWD="+dir)
 		cmd.Stdout = tf
 		cmd.Stderr = &stderr
 		cmd.Dir = dir
@@ -268,6 +270,12 @@ func resolveComposeFiles(dc string, files []string) (string, []string, error) {
 
 	toRemove := td
 	td = ""
+
+	// Now we need to order the files so that those that are in the cwd are
+	// listed first (they provide the context for relative resolution)
+	sort.Slice(res, func(i, j int) bool {
+		return filepath.Dir(res[i]) == cwd
+	})
 
 	return toRemove, res, nil
 }
