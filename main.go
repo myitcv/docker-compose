@@ -11,7 +11,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/myitcv/docker-compose/internal/os/execpath"
@@ -192,6 +191,12 @@ func resolveDockerCompose() (string, error) {
 }
 
 func resolveComposeFiles(dc string, files []string) (string, []string, error) {
+	// Make a copy of the files slice, noting that they might
+	// be dupes, particular when we take into account the
+	// value of COMPOSE_FILE below. Last file wins when it
+	// comes to dupes.
+	dupFiles := append([]string{}, files...)
+
 	// If we return a non-nil error, we should be responsible for any cleanup A
 	// value of td != "" indicates there is cleanup we are responsible for to do
 	var td string
@@ -201,55 +206,53 @@ func resolveComposeFiles(dc string, files []string) (string, []string, error) {
 		}
 	}()
 
-	// Compose the COMPOSE_FILE env var with the -f (--file) flags
-	uniqFiles := make(map[string][]string)
-	envFiles := strings.Split(os.Getenv("COMPOSE_FILE"), string(os.PathListSeparator))
-	for _, f := range envFiles {
-		t := strings.TrimSpace(f)
-		if t != "" {
-			files = append(files, t)
+	var envFiles []string
+	for _, f := range strings.Split(os.Getenv("COMPOSE_FILE"), string(os.PathListSeparator)) {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			envFiles = append(envFiles, f)
 		}
 	}
-	td, err := ioutil.TempDir("", "")
-	if err != nil {
-		return "", nil, fmt.Errorf("failed to create temp dir: %v", err)
-	}
-	for _, f := range files {
+	dupFiles = append(envFiles, dupFiles...)
+	for i, f := range dupFiles {
 		abs, err := filepath.Abs(f)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to make %q absolute: %v", f, err)
 		}
-		d := filepath.Dir(abs)
-		uniqFiles[d] = append(uniqFiles[d], abs)
+		dupFiles[i] = abs
 	}
 
-	cwd, err := os.Getwd()
-	if err != nil {
-		return "", nil, fmt.Errorf("could not get working directory: %v", err)
-	}
-
-	var res []string
-	var eg errgroup.Group
-	for dir, files := range uniqFiles {
-		// For files in the current workding directory (which will be used as the
-		// working directory for the subsequent "real" docker-compose call) we
-		// don't need to do any resolution
-		if dir == cwd {
-			res = append(res, files...)
+	seen := make(map[string]bool)
+	var compFiles []string
+	for i := len(dupFiles) - 1; i >= 0; i-- {
+		f := dupFiles[i]
+		if seen[f] {
 			continue
 		}
-		// Create a temp file for the results
+		seen[f] = true
+		compFiles = append(compFiles, f)
+	}
+	for i := 0; i < len(compFiles)/2; i++ {
+		compFiles[i], compFiles[len(compFiles)-1-i] = compFiles[len(compFiles)-1-i], compFiles[i]
+	}
+
+	td, err := ioutil.TempDir("", "")
+	if err != nil {
+		return "", nil, fmt.Errorf("failed to create temp dir: %v", err)
+	}
+	var res []string
+	var eg errgroup.Group
+	for _, file := range compFiles {
+		dir := filepath.Dir(file)
+		// TODO: there is a potential optimisation here where runs of files that
+		// are in the same directory can have their config resolved with a single
+		// command instead of one command per file. Leave this for now
 		tf, err := ioutil.TempFile(td, "")
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to create temp output file in %v: %v", td, err)
 		}
 		res = append(res, tf.Name())
-		var args []string
-		for _, f := range files {
-			args = append(args, "-f", f)
-		}
-		args = append(args, "config")
-		cmd := exec.Command(dc, args...)
+		cmd := exec.Command(dc, "-f", file, "config")
 		debugf("resolve: %v\n", strings.Join(cmd.Args, " "))
 		var stderr bytes.Buffer
 		cmd.Env = append(os.Environ(), "PWD="+dir)
@@ -260,7 +263,7 @@ func resolveComposeFiles(dc string, files []string) (string, []string, error) {
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("failed to run [%v] in %v: %v\n%s", strings.Join(cmd.Args, " "), dir, err, stderr.Bytes())
 			}
-			return nil
+			return tf.Close()
 		})
 	}
 
@@ -270,12 +273,6 @@ func resolveComposeFiles(dc string, files []string) (string, []string, error) {
 
 	toRemove := td
 	td = ""
-
-	// Now we need to order the files so that those that are in the cwd are
-	// listed first (they provide the context for relative resolution)
-	sort.Slice(res, func(i, j int) bool {
-		return filepath.Dir(res[i]) == cwd
-	})
 
 	return toRemove, res, nil
 }

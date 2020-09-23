@@ -9,7 +9,7 @@ env PATH
 # Same directory
 docker-compose -f docker-compose-1.yml config
 cmp stdout out.golden
-stderr '\Acall: '$TD1'/docker-compose -f '$WORK'/docker-compose-1.yml config\ncall: '$TD2'/docker-compose -f '$WORK'/docker-compose-1.yml config\n'
+stderr '\Aresolve: '$TD1'/docker-compose -f .*docker-compose-1.yml config\ncall: '$TD1'/docker-compose -f '$WORK'/tmp/.* config\ncall: '$TD2'/docker-compose -f '$WORK'/tmp/.* config\n'
 
 # Different directory
 docker-compose -f another/dir/docker-compose-2.yml config
