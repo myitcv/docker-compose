@@ -7,23 +7,29 @@ cmpenv stdout single.golden
 # One file via COMPOSE_FILE, another via -f
 env COMPOSE_FILE=docker-compose-1.yml
 docker-compose -f another/dir/docker-compose-2.yml config
-cmpenv stdout combined.golden
+cmpenv stdout combined.a-b.golden
+
+env COMPOSE_FILE=another/dir/docker-compose-2.yml
+docker-compose -f docker-compose-1.yml config
+cmpenv stdout combined.b-a.golden
 
 # Both via COMPOSE_FILE
 env COMPOSE_FILE=docker-compose-1.yml:another/dir/docker-compose-2.yml
 docker-compose config
-cmpenv stdout combined.golden
+cmpenv stdout combined.a-b.golden
+
+env COMPOSE_FILE=another/dir/docker-compose-2.yml:docker-compose-1.yml
+docker-compose config
+cmpenv stdout combined.b-a.golden
 
 # Both via -f
 env COMPOSE_FILE=
 docker-compose -f docker-compose-1.yml -f another/dir/docker-compose-2.yml config
-cmpenv stdout combined.golden
+cmpenv stdout combined.a-b.golden
 
-# Specifying files in the "wrong" order still works for the resolution
-# in docker-compose-1.yml
 env COMPOSE_FILE=
 docker-compose -f another/dir/docker-compose-2.yml -f docker-compose-1.yml config
-cmpenv stdout combined.golden
+cmpenv stdout combined.b-a.golden
 
 -- docker-compose.yml --
 services:
@@ -43,6 +49,8 @@ version: '3.2'
 
 -- another/dir/docker-compose-2.yml --
 services:
+  service1:
+    image: golang
   service2:
     volumes:
       - $PWD:/blah
@@ -56,7 +64,19 @@ services:
     - $WORK:/blah:rw
 version: '3.2'
 
--- combined.golden --
+-- combined.a-b.golden --
+services:
+  service1:
+    image: golang
+    volumes:
+    - $WORK:/blah:rw
+  service2:
+    image: busybox:1.31.1-musl
+    volumes:
+    - $WORK/another/dir:/blah:rw
+version: '3.2'
+
+-- combined.b-a.golden --
 services:
   service1:
     image: busybox:1.31.1-musl
